@@ -7,17 +7,29 @@ set -ue
 # shellcheck disable=SC2155
 declare -r date="$(date +%F_%T)"
 
+
 function usage () {
 	cat <<EOF
 Usage:
-	$0 [-no-color] [-debug] COMMAND [ARG ...]
+	$0 [OPTION ...] COMMAND [ARG ...]
+Options:
+	-no-color
+		Disable colored output.
+	-debug
+		Show debug messages.
 Commands:
-	mk [-o OWNER_USERNAME ] [-g GROUP] [-m MODE] FILE ...
-	rm FILE ...
-	not [-o OWNER_USERNAME ] [-g GROUP] [-m MODE] FILE ...
+	mk [-o OWNER ] [-g GROUP] [-m MODE] FILES
+		Protect FILES by setting the 'immutable' attribute on them.
+	not [-o OWNER ] [-g GROUP] [-m MODE] FILES
+		Remove this attribute.
+	rm FILES ...
+		Remove files with this attribute.
 	edit FILE
+		Edit a file with this attribute.
 	encrypt [-o OWNER] [-g GROUP] [-m MODE] [-k KEY] [-u KEY_OWNER] [-i -|+] FILE ...
-	decrypt [-o OWNER] [-g GROUP] [-m MODE] [-k KEY] [-u KEY_OWNER] FILE ...
+		Encrypt a file.
+	decrypt [-o OWNER] [-g GROUP] [-m MODE] [-u KEY_OWNER] FILE ...
+		Decrypt a file.
 Note: When FILE begins with a dash (-),
 you must prefix it with './' else it will be interpreted as an option.
 EOF
@@ -311,7 +323,8 @@ function secret_encrypt () {
 }
 
 function secret_decrypt () {
-	local owner='' group='' mode='' key='' key_owner="$USER"
+
+	local owner='' group='' mode='' key_owner="$USER"
 	while [[ $# -ne 0 ]]; do
 		if [[ "$1" == -* ]] && [[ $# -lt 2 ]]; then
 			usage
@@ -320,15 +333,16 @@ function secret_decrypt () {
 			-o ) owner="$2" ;;
 			-g ) group="$2" ;;
 			-m ) mode="$2" ;;
-			-k ) key="$2" ;;
 			-u ) key_owner="$2" ;;
 			-* ) usage ;;
 			* ) break ;;
 		esac
 		shift 2
 	done
+	
 	local file gpg_dir
 	gpg_dir="$(getent passwd "$key_owner" | cut -d: -f6)/.gnupg"
+
 	for file in "$@"; do
 		local decrypted old_mode='' old_owner=''
 		if [[ ! -r "$file" ]]; then

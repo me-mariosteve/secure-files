@@ -53,7 +53,9 @@ else
 	declare -r reset='' ansicode_error='' ansicode_info='' ansicode_success='' ansicode_debug=''
 fi
 
-[[ $# -ne 0 ]] || usage
+if [[ $# -eq 0 ]]; then
+	usage
+fi
 
 function msg () {
 	local args="$1" echo_args
@@ -94,9 +96,7 @@ END command output"
 			;;
 		* ) echo="$*" ;;
 	esac
-	#if [[ "$args" != *d* ]]; then
 	echo "${echo_args[@]}" "$echo"
-	#fi
 	if [[ "$args" = *[ld]* ]]; then
 		echo "$log" >> "$logs"
 	fi
@@ -104,15 +104,6 @@ END command output"
 		exit 1
 	fi
 }
-
-declare -r prg_dir=~/.local/share/secrets.sh.d/"$date"
-mkdir -vp "$prg_dir"
-declare -r logs="$prg_dir/logs"
-[[ ! -e "$logs" ]] || msg ei "Failed to create logs file at '$logs'"
-touch "$logs"
-msg il "Created log file at:"
-msg rl "$logs"
-msg il "===================="
 
 function is_immutable () {
 	[[ "$(lsattr "$1")" =~ ^....i ]]
@@ -363,9 +354,23 @@ function secret_decrypt () {
 
 case "$1" in
 	mk|rm|not|edit|encrypt|decrypt )
+	
+		# create logs file
+		declare -r prg_dir=~/.local/share/secrets.sh.d/"$date"
+		mkdir -vp "$prg_dir"
+		declare -r logs="$prg_dir/logs"
+		if [[ -e "$logs" ]]; then
+			msg ei "Logs file at '$logs' already exists."
+		fi
+		touch "$logs"
+		msg il "Created log file at:"
+		msg rl "$logs"
+		msg il "===================="
+		
 		cmd="$1"
 		shift
 		secret_"$cmd" "$@"
 		;;
+
 	* ) usage ;;
 esac

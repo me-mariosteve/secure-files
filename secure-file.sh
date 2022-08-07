@@ -3,7 +3,6 @@
 
 set -ue
 
-
 # shellcheck disable=SC2155
 declare -r date="$(date +%F_%T)"
 
@@ -15,6 +14,8 @@ Usage:
 Options:
 	-no-color
 		Disable colored output.
+	-verbose|-v
+		Show more informations.
 	-debug
 		Show debug messages.
 Commands:
@@ -36,74 +37,57 @@ EOF
 	exit 1
 }
 
-no_color='' debug=''
-while [[ $# -ne 0 ]]; do
-	case "$1" in
-		-no-color ) no_color=1 ;;
-		-debug ) debug=1 ;;
-		-* ) usage ;;
-		* ) break ;;
-	esac
-	shift
-done
 
-if [[ -z "$no_color" ]]; then
-	declare -r reset='\e[0m' ansicode_error='\e[1;37;41m' ansicode_info='\e[1;37;44m' ansicode_success='\e[1;30;42m' ansicode_debug='\e[2m'
-else
-	declare -r reset='' ansicode_error='' ansicode_info='' ansicode_success='' ansicode_debug=''
-fi
-
-if [[ $# -eq 0 ]]; then
-	usage
-fi
-
-function msg () {
-	local args="$1" echo_args
-	shift
-	local echo="$*" log="$*" cmd_out='' exit_status
-	declare -a echo_args=()
-	if [[ "$args" = *n* ]]; then
-		echo_args[${#echo_args[@]}]='-n'
-	fi
-	if [[ "$args" != *r* ]]; then
-		echo_args[${#echo_args[@]}]='-e'
-	fi
-	case "$args" in
-		*e* ) echo="$ansicode_error$*$reset" ;;
-		*i* ) echo="${ansicode_info}$*${reset}" ;;
-		*s* ) echo="${ansicode_success}$*${reset}" ;;
-		*d* )
-			cmd_out="$(mktemp)"
-			if [[ -n "$debug" ]]; then
-				echo -en "${ansicode_debug}running command: "
-				echo -n "$*"
-				echo -e "${reset}"
-			fi
-			eval "$*" |& tee "$cmd_out"
-			exit_status="${PIPESTATUS[0]}"
-			if [[ "$args" = *q* ]]; then
-				log="running command: $*"
-			else
-				log="running command: $*
-EXIT STATUS: $exit_status
-BEGIN command output
-$(cat "$cmd_out")
-END command output"
-			fi
-			rm "$cmd_out"
-			echo "$log" >> "$logs"
-			return "$exit_status"
-			;;
-		* ) echo="$*" ;;
-	esac
-	echo "${echo_args[@]}" "$echo"
-	if [[ "$args" = *[ld]* ]]; then
-		echo "$log" >> "$logs"
-	fi
-	if [[ "$args" = *e* ]]; then
-		exit 1
-	fi
+function display () {
+	echo "${colors[${FUNCNAME[1]}]}$*${colors[reset]}"
 }
+
+function log () {
+	local trace="${FUNCNAME[*]}"
+	echo "[${FUNCNAME[1]}] ${trace// />}: ${*//\n/\n\t}" >> "$logs"
+}
+
+function success () {
+	display "$*"
+	log "$*"
+}
+
+function error () {
+	display "$*"
+	log "$*"
+	exit 1
+}
+
+function info () {
+	display "$*"
+	log "$*"
+}
+
+function verbose () {
+	if [[ -n "$verbose" ]]; then
+		display "$*"
+	fi
+	log "$*"
+}
+
+function debug () {
+	local cmd_out exit_status
+	cmd_out="$prg_dir/output.XXXX"
+	if [[ -n "$debug" ]]; then
+		display "Running command: $*"
+	fi
+	log "running command: $*"
+	eval "$*" |& tee "$cmd_out"
+	declare -i exit_status="${PIPESTATUS[0]}"
+	log "exit status: $exit_status"
+	log "command output:"
+	log "$(wc -l "$cmd_out") lines"
+	log "$(cat "$cmd_out")"
+	log "==============="
+	return "$exit_status"
+}
+
+
 
 function is_immutable () {
 	[[ "$(lsattr "$1")" =~ ^....i ]]
@@ -143,44 +127,45 @@ function set_file () {
 	[[ "$immutable" = - ]] && [[ -n "$is_immutable" ]] || chmutable=x
 	if [[ -n "$chmod" ]] || [[ -n "$chown" ]] || [[ -n "$chgrp" ]] || [[ -n "$chmutable" ]]; then
 		if [[ "$immutable" != n ]] && [[ -n "$is_immutable" ]]; then
-			msg il "Removing attribute 'immutable' for '$file'"
-			msg d chattr -V -i "$file"
+			verbose "Setting 'immutable' attribute on '$file'"
+			debug chattr -V +i "$file"
 		fi
 		if [[ -n "$chmod" ]]; then 
-			msg il "Changing permissions for '$file': '$actual_mode' => '$mode'"
-			msg d chmod -v "$mode" "$file" || return $?
+			verbose "Changing permissions for '$file': '$actual_mode' => '$mode'"
+			debug chmod -v "$mode" "$file"
 		fi
 		if [[ -n "$chown" ]]; then
-			msg il "Changing owner for '$file': '$actual_owner' => '$owner'"
-			msg d chown -v "$owner" "$file" || return $?
+			verbose "Changing owner for '$file': '$actual_owner' => '$owner'"
+			debug chown -v "$owner" "$file"
 		fi
 		if [[ -n "$chgrp" ]]; then
-			msg il "Changing group for '$file': '$actual_group' => '$group'"
-			msg d chgrp -v "$group" "$file" || return $?
+			verbose "Changing group for '$file': '$actual_group' => '$group'"
+			debug chgrp -v "$group" "$file"
 		fi
-		if [[ "$immutable" = + ]]; then
-				msg il "Setting attribute 'immutable' for '$file'"
-				msg d chattr -V +i "$file"
-		elif [[ "$immutable" != [n-] ]] && [[ -n "$is_immutable" ]]; then
-			chattr -V +i "$file"
+		if [[ "$immutable" = + ]] || { [[ "$immutable" != [n-] ]] && [[ -n "$is_immutable" ]]; }; then
+			verbose "Removing 'immutable' attribute on '$file'"
+			debug chattr -V -i "$file"
 		fi
 	else
-		msg il "No changes required."
+		verbose "No changes required."
 	fi
 }
 
 function backup () {
 	local file="$1" backup mode_old=''
 	backup="$prg_dir/backup-$file"
-	msg d mkdir -vp "$(dirname "$backup")"
+	debug mkdir -vp "$(dirname "$backup")"
 	if [[ ! -r "$file" ]]; then
 		mode_old="$(stat -c %a "$file")"
 		set_file "$file" -m400 -o -g
 	fi
-	msg d cp -v "$file" "$backup"
-	msg d chattr -V +i "$backup"
-	msg sl "Created backup of '$file' at '$backup'"
-	[[ -z "$mode_old" ]] || set_file "$file" -m"$mode_old" -o -g
+	debug cp -v "$file" "$backup"
+	verbose "Setting 'immutable' attribute on '$backup'"
+	debug chattr -V +i "$backup"
+	info "Created backup of '$file' at '$backup'"
+	if [[ -n "$mode_old" ]]; then
+		set_file "$file" -m"$mode_old" -o -g
+	fi
 }
 
 function secret_mk () {
@@ -198,12 +183,16 @@ function secret_mk () {
 	done
 	for file in "$@"; do
 		if [[ -e "$file" ]]; then
-			[[ -f "$file" ]] || msg el "Can't secure '$file' because it is not a regular file."
+			[[ -f "$file" ]] || error "Can't secure '$file' because it is not a regular file."
 		fi
-		{
-			[[ -e "$file" ]] || msg d touch "$file"
-			msg d set_file "$file" -m"$mode" -o"$owner" -g"$group" +
-		} || msg el "'$file' was not secured because an error occured."
+		if
+			[[ -e "$file" ]] || touch "$file"
+			set_file "$file" -m"$mode" -o"$owner" -g"$group" +
+		then
+			success "Secured '$file'."
+		else
+			error "'$file' was not secured because an error occured."
+		fi
 	done
 }
 
@@ -225,34 +214,35 @@ function secret_not () {
 	for file in "$@"; do
 		{
 			if [[ -e "$file" ]]; then
-				[[ -f "$file" ]] || msg el "'$file' is not a regular file."
+				[[ -f "$file" ]] || error "'$file' is not a regular file."
 			else
-				msg d touch "$file"
+				touch "$file"
 			fi
-			msg d set_file "$file" -m"$mode" -o"$owner" -g"$group" -
-		} || msg el "an error occured while unsecuring '$file'."
+			set_file "$file" -m"$mode" -o"$owner" -g"$group" -
+		} || error "an error occured while unsecuring '$file'."
 	done
 }
-
 
 function secret_rm () {
 	[[ $# -gt 0 ]] || usage
 	local file answer
 	for file in "$@"; do
-		[[ -e "$file" ]] || msg el "'$file' was not deleted because it does not exist."
-		[[ -f "$file" ]] || msg el "'$file' was not deleted because it is not a regular file."
-		msg in "You're about to remove the secret file '$file'.\nWrite 'I confirm.': "
+		[[ -e "$file" ]] || error "can't delete '$file' because it does not exist."
+		[[ -f "$file" ]] || error "can't delete '$file' because it is not a regular file."
+		info "You're about to remove the secret file '$file'.\nWrite 'I confirm.': "
 		read -r answer
 		if [[ "$answer" = 'I confirm.' ]]; then
-			msg sl "'$file' will be deleted because of user input."
-			if ! {
-				msg d set_file "$file" -m -o -g - \
-				&& msg d rm -vi "$file"
-			}; then
-				msg el "An error occured while trying to delete '$file'."
+			info "'$file' will be deleted."
+			if
+				set_file "$file" -m -o -g - &&
+				debug rm -vi "$file"
+			then
+				success "Deleted '$file'."
+			else
+				error "An error occured while trying to delete '$file'."
 			fi
 		else
-			msg il "'$file' won't be deleted because of user input."
+			info "'$file' won't be deleted."
 		fi
 	done
 }
@@ -260,20 +250,20 @@ function secret_rm () {
 function secret_edit () {
 	[[ $# -ge 1 ]] || usage
 	local file="$1" editor="${EDITOR:-${VI:-vim}}" temp backup owner mode mutable=+
-	[[ -e "$file" ]] || msg el "'$file' does not exist."
-	[[ -f "$file" ]] || msg el "'$file' is not a regular file."
+	[[ -e "$file" ]] || error "'$file' does not exist."
+	[[ -f "$file" ]] || error "'$file' is not a regular file."
 	owner="$(stat -c %u "$file")"
 	mode="$(stat -c %a "$file")"
 	is_immutable "$file" || mutable=-
-	temp="$(mktemp)" || msg el "Failed to create temporary file for editing."
+	temp="$(mktemp)" || error "Failed to create temporary file for editing."
 	backup="$prg_dir/backup-$file"
-	msg d backup "$file" || msg el "Failed to create backup file."
-	msg sl "Saved current version of '$file' to '$backup'"
-	msg d set_file "$file" -m600 -o"$UID" -g -
-	msg d mv -vf "$file" "$temp"
-	msg d "$editor" "$temp"
-	msg d mv -v "$temp" "$file"
-	msg d set_file "$file" -m"$mode" -o"$owner" -g "$mutable"
+	backup "$file" || error "Failed to create backup file."
+	info "Saved current version of '$file' to '$backup'"
+	set_file "$file" -m600 -o"$UID" -g -
+	debug mv -vf "$file" "$temp"
+	debug "$editor" "$temp"
+	debug mv -v "$temp" "$file"
+	set_file "$file" -m"$mode" -o"$owner" -g "$mutable"
 }
 
 function secret_encrypt () {
@@ -304,12 +294,12 @@ function secret_encrypt () {
 		while [[ -e "$encrypted" ]]; do
 			read -rp "'$encrypted' already exists. Enter another file name: " encrypted
 		done
-		msg d backup "$file"
+		backup "$file"
 		old_mode="$(stat -c %a "$file")"
-		msg d set_file "$file" -m400 -o -g
-		gpg --pinentry-mode loopback --homedir "$gpg_dir" --output "$encrypted" --encrypt --sign --armor -r "$key" "$file"
-		msg d set_file "$file" -m"$old_mode" -o -g
-		msg d set_file "$encrypted" -m"${mode:-400}" -o"$owner" -g"$group" "${immutable:-+}"
+		set_file "$file" -m400 -o -g
+		debug gpg --pinentry-mode loopback --homedir "$gpg_dir" --output "$encrypted" --encrypt --sign --armor -r "$key" "$file"
+		set_file "$file" -m"$old_mode" -o -g
+		set_file "$encrypted" -m"${mode:-400}" -o"$owner" -g"$group" "${immutable:-+}"
 	done
 }
 
@@ -338,20 +328,62 @@ function secret_decrypt () {
 		local decrypted old_mode='' old_owner=''
 		if [[ ! -r "$file" ]]; then
 			read -r old_mode old_owner <<<"$(stat -c '%a %u' "$file")"
-			msg d set_file "$file" -m400 -o"$USER" -g
+			set_file "$file" -m400 -o"$USER" -g
 		fi
 		decrypted="${file%.asc}"
 		while [[ -e "$decrypted" ]]; do
 			read -rp "'$decrypted' already exists. Enter another file name: " decrypted
 		done
-		gpg --homedir "$gpg_dir" --pinentry-mode loopback --output "$decrypted" --decrypt "$file"
+		debug gpg --homedir "$gpg_dir" --pinentry-mode loopback --output "$decrypted" --decrypt "$file"
 		if [[ -n "$old_mode" ]] || [[ -n "$old_owner" ]]; then
-			msg d set_file "$file" -m"$old_mode" -o"$old_owner" -g
+			set_file "$file" -m"$old_mode" -o"$old_owner" -g
 		fi
-		msg d set_file "$decrypted" -m"$mode" -o"$owner"  -g"$group"
+		set_file "$decrypted" -m"$mode" -o"$owner"  -g"$group"
 	done
 }
 
+
+# parse arguments before the command
+no_color='' verbose='' debug=''
+while [[ $# -ne 0 ]]; do
+	case "$1" in
+		-no-color ) no_color=x ;;
+		-v | -verbose ) verbose=x ;;
+		-debug ) debug=x ;;
+		-* ) usage ;;
+		* ) break ;;
+	esac
+	shift
+done
+
+if [[ $# -eq 0 ]]; then
+	usage
+fi
+
+
+# define text formatting for messages
+if [[ -z "$no_color" ]]; then
+	declare -rA colors=(
+		[reset]=$'\e[0m'
+		[error]=$'\e[1;37;41m'
+		[success]=$'\e[1;30;42m'
+		[info]=$'\e[96m'
+		[verbose]=$'\e[34m'
+		[debug]=$'\e[2m'
+	)
+else
+	declare -rA colors=(
+		[reset]=''
+		[error]=''
+		[success]=''
+		[info]=''
+		[verbose]=''
+		[debug]=''
+	)
+fi
+
+
+# run the command (if it exist)
 case "$1" in
 	mk|rm|not|edit|encrypt|decrypt )
 	
@@ -360,12 +392,12 @@ case "$1" in
 		mkdir -vp "$prg_dir"
 		declare -r logs="$prg_dir/logs"
 		if [[ -e "$logs" ]]; then
-			msg ei "Logs file at '$logs' already exists."
+			_logs="$logs"
+			logs="$(tty)"
+			error "Logs file at '$_logs' already exists."
 		fi
 		touch "$logs"
-		msg il "Created log file at:"
-		msg rl "$logs"
-		msg il "===================="
+		info "Created log file at '$logs'"
 		
 		cmd="$1"
 		shift

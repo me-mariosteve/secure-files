@@ -46,7 +46,7 @@ function display () {
 
 function log () {
 	local trace="${FUNCNAME[*]}"
-	echo "[${FUNCNAME[1]}] ${trace// />}: ${*//\n/\n\t}" >> "$logs"
+	echo "[${FUNCNAME[1]}] ${trace// />}: ${*//$'\n'/$'\n\t'}" >> "$logs"
 }
 
 function success () {

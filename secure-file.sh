@@ -18,6 +18,8 @@ Options:
 		Show more informations.
 	-debug
 		Show debug messages.
+	-trace
+		Enable Bash 'xtrace' option. Intended for debugging.
 Commands:
 	mk [-o OWNER ] [-g GROUP] [-m MODE] FILES
 		Protect FILES by setting the 'immutable' attribute on them.
@@ -345,17 +347,22 @@ function secret_decrypt () {
 
 
 # parse arguments before the command
-no_color='' verbose='' debug=''
+no_color='' verbose='' debug='' trace=''
 while [[ $# -ne 0 ]]; do
 	case "$1" in
 		-no-color ) no_color=x ;;
 		-v | -verbose ) verbose=x ;;
 		-debug ) debug=x ;;
+		-trace ) trace=x ;;
 		-* ) usage ;;
 		* ) break ;;
 	esac
 	shift
 done
+
+if [[ -n "$trace" ]]; then
+	set -x
+fi
 
 if [[ $# -eq 0 ]]; then
 	usage
@@ -365,21 +372,21 @@ fi
 # define text formatting for messages
 if [[ -z "$no_color" ]]; then
 	declare -rA colors=(
-		[reset]=$'\e[0m'
 		[error]=$'\e[1;37;41m'
 		[success]=$'\e[1;30;42m'
 		[info]=$'\e[96m'
 		[verbose]=$'\e[34m'
 		[debug]=$'\e[2m'
+		[reset]=$'\e[0m'
 	)
 else
 	declare -rA colors=(
-		[reset]=''
 		[error]=''
 		[success]=''
 		[info]=''
 		[verbose]=''
 		[debug]=''
+		[reset]=''
 	)
 fi
 

@@ -46,7 +46,7 @@ function display () {
 
 function log () {
 	local trace="${FUNCNAME[*]}"
-	echo "[${FUNCNAME[1]}] ${trace// />}: ${*//$'\n'/$'\n\t'}" >> "$logs"
+	echo "[${FUNCNAME[1]}] ${trace// />}: ${*//$'\n'/$'\n\t'}" >> "$log_file"
 }
 
 function success () {
@@ -75,7 +75,7 @@ function verbose () {
 function debug () {
 	local cmd cmd_out exit_status
 	declare -a cmd=("$@")
-	cmd_out="$prg_dir/output.XXXX"
+	cmd_out="$current_run_dir/output.XXXX"
 	if [[ -n "$debug" ]]; then
 		display "Running command: ${cmd[*]}"
 	fi
@@ -91,7 +91,6 @@ function debug () {
 }
 
 
-
 function is_immutable () {
 	[[ "$(lsattr "$1")" =~ ^....i ]]
 }
@@ -104,7 +103,7 @@ function set_file () {
 	local actual_mode actual_owner actual_group is_immutable=''
 	if [[ -n "$mode" ]]; then
 		local temp
-		temp="$(mktemp "$prg_dir/tmp.XXXXXX")"
+		temp="$(mktemp "$current_run_dir/tmp.XXXXXX")"
 		chmod "${2#-m}" "$temp"
 		mode="$(stat -c %a "$temp")"
 		actual_mode="$(stat -c %a "$file")"
@@ -156,7 +155,7 @@ function set_file () {
 
 function backup () {
 	local file="$1" backup mode_old=''
-	backup="$prg_dir/backup-$file"
+	backup="$current_run_dir/backup-$file"
 	debug mkdir -vp "$(dirname "$backup")"
 	if [[ ! -r "$file" ]]; then
 		mode_old="$(stat -c %a "$file")"
@@ -259,7 +258,7 @@ function secret_edit () {
 	mode="$(stat -c %a "$file")"
 	is_immutable "$file" || mutable=-
 	temp="$(mktemp)" || error "Failed to create temporary file for editing."
-	backup="$prg_dir/backup-$file"
+	backup="$current_run_dir/backup-$file"
 	backup "$file" || error "Failed to create backup file."
 	info "Saved current version of '$file' to '$backup'"
 	set_file "$file" -m600 -o"$UID" -g -
@@ -396,16 +395,22 @@ case "$1" in
 	mk|rm|not|edit|encrypt|decrypt )
 	
 		# create logs file
-		declare -r prg_dir=~/.local/share/secrets.sh.d/"$date"
-		mkdir -vp "$prg_dir"
-		declare -r logs="$prg_dir/logs"
-		if [[ -e "$logs" ]]; then
-			_logs="$logs"
-			logs="$(tty)"
-			error "Logs file at '$_logs' already exists."
+		declare -r main_prg_dir=~/.local/share/secrets.sh.d/
+		declare -r current_run_dir="$main_prg_dir/$date"
+		if [[ -e "$current_run_dir" ]]; then
+			log_file="$(tty)"
+			error "'$current_run_dir' should have been used as the directory for the current
+execution of this program and nothing else, but it already exists."
 		fi
-		touch "$logs"
-		info "Created log file at '$logs'"
+		mkdir -vp "$current_run_dir"
+		log_file_attempt="$current_run_dir/logs"
+		if [[ -e "$log_file_attempt" ]]; then
+			log_file="$(tty)"
+			error "Logs file at '$log_file_attempt' already exists."
+		fi
+		declare log_file="$log_file_attempt"
+		touch "$log_file"
+		info "Created log file at '$log_file'"
 		
 		main_cmd="$1"
 		shift

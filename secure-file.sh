@@ -134,23 +134,23 @@ function set_file () {
 	if [[ -n "$chmod" ]] || [[ -n "$chown" ]] || [[ -n "$chgrp" ]] || [[ -n "$chmutable" ]]; then
 		if [[ "$immutable" != n ]] && [[ -n "$is_immutable" ]]; then
 			verbose "Setting 'immutable' attribute on '$file'"
-			debug chattr -V +i "$file"
+			chattr +i "$file"
 		fi
 		if [[ -n "$chmod" ]]; then 
 			verbose "Changing permissions for '$file': '$actual_mode' => '$mode'"
-			debug chmod -v "$mode" "$file"
+			chmod "$mode" "$file"
 		fi
 		if [[ -n "$chown" ]]; then
 			verbose "Changing owner for '$file': '$actual_owner' => '$owner'"
-			debug chown -v "$owner" "$file"
+			chown "$owner" "$file"
 		fi
 		if [[ -n "$chgrp" ]]; then
 			verbose "Changing group for '$file': '$actual_group' => '$group'"
-			debug chgrp -v "$group" "$file"
+			chgrp "$group" "$file"
 		fi
 		if [[ "$immutable" = + ]] || { [[ "$immutable" != [n-] ]] && [[ -n "$is_immutable" ]]; }; then
 			verbose "Removing 'immutable' attribute on '$file'"
-			debug chattr -V -i "$file"
+			chattr -i "$file"
 		fi
 	else
 		verbose "No changes required."
@@ -160,14 +160,14 @@ function set_file () {
 function backup () {
 	local file="$1" backup mode_old=''
 	backup="$current_run_dir/backup-$file"
-	debug mkdir -vp "$(dirname "$backup")"
+	mkdir -p "$(dirname "$backup")"
 	if [[ ! -r "$file" ]]; then
 		mode_old="$(stat -c %a "$file")"
 		set_file "$file" -m400 -o -g
 	fi
 	debug cp -v "$file" "$backup"
 	verbose "Setting 'immutable' attribute on '$backup'"
-	debug chattr -V +i "$backup"
+	chattr +i "$backup"
 	info "Created backup of '$file' at '$backup'"
 	if [[ -n "$mode_old" ]]; then
 		set_file "$file" -m"$mode_old" -o -g
@@ -363,12 +363,26 @@ while [[ $# -ne 0 ]]; do
 	shift
 done
 
+if [[ $# -eq 0 ]]; then
+	usage
+fi
+
 if [[ -n "$trace" ]]; then
 	set -x
 fi
 
-if [[ $# -eq 0 ]]; then
-	usage
+# define aliases so we don't have to write 'debug' everytime
+alias chmod='debug chmod'
+alias chown='debug chown'
+alias chgrp='debug chgrp'
+alias chattr='debug chattr'
+
+if [[ -n "$verbose" ]]; then
+	alias mkdir='mkdir -v'
+	alias chmod='chmod -v'
+	alias chown='chown -v'
+	alias chgrp='chgrp -v'
+	alias chattr='chattr -V'
 fi
 
 
@@ -406,7 +420,7 @@ case "$1" in
 			error "'$current_run_dir' should have been used as the directory for the current
 execution of this program and nothing else, but it already exists."
 		fi
-		mkdir -vp "$current_run_dir"
+		mkdir -p "$current_run_dir"
 		log_file_attempt="$current_run_dir/logs"
 		if [[ -e "$log_file_attempt" ]]; then
 			log_file="$(tty)"

@@ -71,13 +71,14 @@ function verbose () {
 }
 
 function debug () {
-	local cmd_out exit_status
+	local cmd cmd_out exit_status
+	declare -a cmd=("$@")
 	cmd_out="$prg_dir/output.XXXX"
 	if [[ -n "$debug" ]]; then
-		display "Running command: $*"
+		display "Running command: ${cmd[*]}"
 	fi
-	log "running command: $*"
-	eval "$*" |& tee "$cmd_out"
+	log "running command: ${cmd[*]}"
+	"${cmd[@]}" |& tee "$cmd_out"
 	declare -i exit_status="${PIPESTATUS[0]}"
 	log "exit status: $exit_status"
 	log "command output:"
@@ -399,9 +400,9 @@ case "$1" in
 		touch "$logs"
 		info "Created log file at '$logs'"
 		
-		cmd="$1"
+		main_cmd="$1"
 		shift
-		secret_"$cmd" "$@"
+		secret_"$main_cmd" "$@"
 		;;
 
 	* ) usage ;;

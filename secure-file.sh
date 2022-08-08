@@ -3,8 +3,12 @@
 
 set -ue
 
+# Put nanoseconds in the date so the script can be run
+# multiple times a second, else the directory that
+# should be used would be created and used by another
+# process running this script.
 # shellcheck disable=SC2155
-declare -r date="$(date +%F_%T)"
+declare -r date="$(date +%F_%T.%N)"
 
 
 function usage () {

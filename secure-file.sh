@@ -329,7 +329,6 @@ function secret_encrypt () {
 		while [[ -e "$encrypted" ]]; do
 			read -rp "'$encrypted' already exists. Enter another file name: " encrypted
 		done
-		backup "$file"
 		old_mode="$(stat -c %a "$file")"
 		set_file "$file" -m400 -o -g
 		debug gpg --pinentry-mode loopback --homedir "$gpg_dir" --output "$encrypted" --encrypt --sign --armor -r "$key" "$file"

@@ -205,7 +205,7 @@ function backup () {
 
 function secret_mk () {
 	[[ $# -ge 1 ]] || usage
-	local file owner='' group='' mode='000'
+	local file owner='' group='' mode=''
 	while [[ $# != 0 ]]; do
 		case "$1" in
 			-m ) mode="$2" ;;

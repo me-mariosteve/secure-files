@@ -57,7 +57,7 @@ Commands:
 		Remove files with this attribute.
 	edit FILE
 		Edit a file with this attribute.
-	encrypt [-o OWNER] [-g GROUP] [-m MODE] [-k KEY] [-u KEY_OWNER] [-i -|+] FILE ...
+	encrypt [-o OWNER] [-g GROUP] [-m MODE] -k KEY [-u KEY_OWNER] [-i -|+] FILE ...
 		Encrypt a file.
 	decrypt [-o OWNER] [-g GROUP] [-m MODE] [-u KEY_OWNER] FILE ...
 		Decrypt a file.
@@ -302,7 +302,7 @@ function secret_edit () {
 }
 
 function secret_encrypt () {
-	local key owner='' group='' mode='' immutable='' key_owner="$USER"
+	local key='' owner='' group='' mode='' immutable='' key_owner="$USER"
 	while [[ $# -ne 0 ]]; do
 		if [[ "$1" == -* ]] && [[ $# -lt 2 ]]; then
 			usage
@@ -319,7 +319,7 @@ function secret_encrypt () {
 		esac
 		shift 2
 	done
-	if [[ $# -eq 0 ]]; then
+	if [[ $# -eq 0 ]] || [[ -z "$key" ]]; then
 		usage
 	fi
 	gpg_dir="$(getent passwd "$key_owner" | cut -d: -f 6)/.gnupg"

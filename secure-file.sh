@@ -153,12 +153,15 @@ function set_file () {
 	if is_immutable "$file"; then
 		is_immutable=x
 	fi
-	[[ "$immutable" = + ]] && [[ -z "$is_immutable" ]] || chmutable=x
-	[[ "$immutable" = - ]] && [[ -n "$is_immutable" ]] || chmutable=x
+	if { [[ "$immutable" = + ]] && [[ -z "$is_immutable" ]]; } ||
+		{ [[ "$immutable" = - ]] && [[ -n "$is_immutable" ]]; }
+	then
+		chmutable=x
+	fi
 	if [[ -n "$chmod" ]] || [[ -n "$chown" ]] || [[ -n "$chgrp" ]] || [[ -n "$chmutable" ]]; then
-		if [[ "$immutable" != n ]] && [[ -n "$is_immutable" ]]; then
-			verbose "Setting 'immutable' attribute on '$file'"
-			chattr +i "$file"
+		if [[ -n "$is_immutable" ]]; then
+			verbose "Removing 'immutable' attribute on '$file'"
+			chattr -i "$file"
 		fi
 		if [[ -n "$chmod" ]]; then 
 			verbose "Changing permissions for '$file': '$actual_mode' => '$mode'"
@@ -172,9 +175,11 @@ function set_file () {
 			verbose "Changing group for '$file': '$actual_group' => '$group'"
 			chgrp "$group" "$file"
 		fi
-		if [[ "$immutable" = + ]] || { [[ "$immutable" != [n-] ]] && [[ -n "$is_immutable" ]]; }; then
-			verbose "Removing 'immutable' attribute on '$file'"
-			chattr -i "$file"
+		if { [[ -n "$chmutable" ]] && [[ "$immutable" = + ]]; } ||
+			{ [[ -z "$chmutable" ]] && [[ -n "$is_immutable" ]]; }
+		then
+			verbose "Setting 'immutable' attribute on '$file'"
+			chattr +i "$file"
 		fi
 	else
 		verbose "No changes required."

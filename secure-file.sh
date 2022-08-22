@@ -119,6 +119,19 @@ function debug () {
 }
 
 
+function ask_filename () {
+	local attempt="$1"
+	while [[ -e "$attempt" ]]; do
+		read -rp "'$attempt' already exists. Please enter another file name, or the same it overwrite it: "
+		if [[ "$REPLY" = "$attempt" ]]; then
+			break
+		fi
+		attempt="$REPLY"
+	done
+	echo "$attempt"
+}
+
+
 function is_immutable () {
 	[[ "$(lsattr "$1")" =~ ^....i ]]
 }
@@ -325,10 +338,7 @@ function secret_encrypt () {
 	gpg_dir="$(getent passwd "$key_owner" | cut -d: -f 6)/.gnupg"
 	local file encrypted old_mode
 	for file in "$@"; do
-		encrypted="$file.asc"
-		while [[ -e "$encrypted" ]]; do
-			read -rp "'$encrypted' already exists. Enter another file name: " encrypted
-		done
+		encrypted="$(ask_filename "$file.asc")"
 		old_mode="$(stat -c %a "$file")"
 		set_file "$file" -m400 -o -g
 		debug gpg --pinentry-mode loopback --homedir "$gpg_dir" --output "$encrypted" --encrypt --sign --armor -r "$key" "$file"
@@ -364,10 +374,7 @@ function secret_decrypt () {
 			read -r old_mode old_owner <<<"$(stat -c '%a %u' "$file")"
 			set_file "$file" -m400 -o"$USER" -g
 		fi
-		decrypted="${file%.asc}"
-		while [[ -e "$decrypted" ]]; do
-			read -rp "'$decrypted' already exists. Enter another file name: " decrypted
-		done
+		decrypted="$(ask_filename "${file%.asc}")"
 		debug gpg --homedir "$gpg_dir" --pinentry-mode loopback --output "$decrypted" --decrypt "$file"
 		if [[ -n "$old_mode" ]] || [[ -n "$old_owner" ]]; then
 			set_file "$file" -m"$old_mode" -o"$old_owner" -g

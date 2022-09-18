@@ -35,6 +35,7 @@ set -ue
 declare -r date="$(date +%F_%T.%N)"
 
 
+
 function usage () {
 	cat <<EOF
 Usage:
@@ -68,38 +69,35 @@ EOF
 }
 
 
+
+## Function used to display and log messages.
+
 function display () {
 	echo "${colors[${FUNCNAME[1]}]}$*${colors[reset]}"
 }
-
 function log () {
 	local trace="${FUNCNAME[*]}"
 	echo "[${FUNCNAME[1]}] ${trace// />}: ${*//$'\n'/$'\n\t'}" >> "$log_file"
 }
-
 function success () {
 	display "$*"
 	log "$*"
 }
-
 function error () {
 	display "$*"
 	log "$*"
 	exit 1
 }
-
 function info () {
 	display "$*"
 	log "$*"
 }
-
 function verbose () {
 	if [[ -n "$verbose" ]]; then
 		display "$*"
 	fi
 	log "$*"
 }
-
 function debug () {
 	local cmd cmd_out exit_status
 	declare -a cmd=("$@")
@@ -118,7 +116,11 @@ function debug () {
 	return "$exit_status"
 }
 
+ 
 
+# Ask the name of a file that doesn't exist.
+# If it exists, asks the user if he wants to overwrite it
+# else asks again.
 function ask_filename () {
 	local attempt="$1"
 	while [[ -e "$attempt" ]]; do
@@ -132,16 +134,31 @@ function ask_filename () {
 }
 
 
+ 
 function is_immutable () {
+	# is_immutable FILE
+	# Exit with code 0 if FILE is immutable,
+	# else 1.
 	[[ "$(lsattr "$1")" =~ ^....i ]]
 }
 
+
 function set_file () {
+	# set_file FILE -m[MODE] -o[OWNER] -g[GROUP] [+|-]
+	# - '-m', '-o' and '-g' must be present even without the argument.
+	# - If an argument of MODE, OWNER or GROUP is not given,
+	#   then the corresponding property of the file won't be changed.
+	# - If there is '+' at the end, the file will have the immutable attribute;
+	#   if there is '-' it this attribute won't be set,
+	#   and if there is nothing it won't be changed.
+	
 	local file="$1" mode="${2#-m}" owner group immutable="${5:-}"
 	owner="$(getent passwd "${3#-o}" | cut -d: -f3)"
 	group="$(getent group "${4#-g}" | cut -d: -f3)"
 	local chmod='' chown='' chgrp='' chmutable=''
 	local actual_mode actual_owner actual_group is_immutable=''
+	
+	# Find what needs to be changed.
 	if [[ -n "$mode" ]]; then
 		local temp
 		temp="$(mktemp "$current_run_dir/tmp.XXXXXX")"
@@ -171,11 +188,14 @@ function set_file () {
 	then
 		chmutable=x
 	fi
+	
 	if [[ -n "$chmod" ]] || [[ -n "$chown" ]] || [[ -n "$chgrp" ]] || [[ -n "$chmutable" ]]; then
 		if [[ -n "$is_immutable" ]]; then
 			verbose "Removing 'immutable' attribute on '$file'"
 			chattr -i "$file"
 		fi
+
+		# Make the required changes.
 		if [[ -n "$chmod" ]]; then 
 			verbose "Changing permissions for '$file': '$actual_mode' => '$mode'"
 			chmod "$mode" "$file"
@@ -194,12 +214,17 @@ function set_file () {
 			verbose "Setting 'immutable' attribute on '$file'"
 			chattr +i "$file"
 		fi
+
 	else
 		verbose "No changes required."
 	fi
 }
 
+
+
 function backup () {
+	# backup FILE
+	# Save a readonly copy of FILE under $current_run_dir.
 	local file="$1" backup mode_old=''
 	backup="$current_run_dir/backup-$file"
 	mkdir -p "$(dirname "$backup")"
@@ -216,7 +241,14 @@ function backup () {
 	fi
 }
 
+
+
+# The commands of this script:
+# mk, not, rm, edit, encrypt, decrypt.
+# Read the help message for usage.
+
 function secret_mk () {
+	# parse options
 	[[ $# -ge 1 ]] || usage
 	local file owner='' group='' mode=''
 	while [[ $# != 0 ]]; do
@@ -229,6 +261,7 @@ function secret_mk () {
 		esac
 		shift 2
 	done
+	
 	for file in "$@"; do
 		if [[ -e "$file" ]]; then
 			[[ -f "$file" ]] || error "Can't secure '$file' because it is not a regular file."
@@ -244,7 +277,9 @@ function secret_mk () {
 	done
 }
 
+
 function secret_not () {
+	# parse options
 	[[ $# -ge 1 ]] || usage
 	local file owner group mode
 	owner='' group='' mode=''
@@ -259,6 +294,7 @@ function secret_not () {
 		esac
 		shift 2
 	done
+
 	for file in "$@"; do
 		{
 			if [[ -e "$file" ]]; then
@@ -270,6 +306,7 @@ function secret_not () {
 		} || error "an error occured while unsecuring '$file'."
 	done
 }
+
 
 function secret_rm () {
 	[[ $# -gt 0 ]] || usage
@@ -295,18 +332,23 @@ function secret_rm () {
 	done
 }
 
+
 function secret_edit () {
 	[[ $# -ge 1 ]] || usage
 	local file="$1" editor="${EDITOR:-${VI:-vim}}" temp backup owner mode mutable=+
 	[[ -e "$file" ]] || error "'$file' does not exist."
 	[[ -f "$file" ]] || error "'$file' is not a regular file."
+	# get informations about the file to edit
 	owner="$(stat -c %u "$file")"
 	mode="$(stat -c %a "$file")"
 	is_immutable "$file" || mutable=-
+	# create temporary file for editing
 	temp="$(mktemp)" || error "Failed to create temporary file for editing."
+	# backup the file
 	backup="$current_run_dir/backup-$file"
 	backup "$file" || error "Failed to create backup file."
 	info "Saved current version of '$file' to '$backup'"
+	# prepare to edit
 	set_file "$file" -m600 -o"$UID" -g -
 	debug mv -vf "$file" "$temp"
 	debug "$editor" "$temp"
@@ -314,7 +356,9 @@ function secret_edit () {
 	set_file "$file" -m"$mode" -o"$owner" -g "$mutable"
 }
 
+
 function secret_encrypt () {
+	# parse options
 	local key='' owner='' group='' mode='' immutable='' key_owner="$USER"
 	while [[ $# -ne 0 ]]; do
 		if [[ "$1" == -* ]] && [[ $# -lt 2 ]]; then
@@ -337,6 +381,8 @@ function secret_encrypt () {
 	fi
 	gpg_dir="$(getent passwd "$key_owner" | cut -d: -f 6)/.gnupg"
 	local file encrypted old_mode
+
+	# encrypt the files
 	for file in "$@"; do
 		encrypted="$(ask_filename "$file.asc")"
 		old_mode="$(stat -c %a "$file")"
@@ -347,8 +393,9 @@ function secret_encrypt () {
 	done
 }
 
-function secret_decrypt () {
 
+function secret_decrypt () {
+	# parse options
 	local owner='' group='' mode='' key_owner="$USER"
 	while [[ $# -ne 0 ]]; do
 		if [[ "$1" == -* ]] && [[ $# -lt 2 ]]; then
@@ -364,10 +411,10 @@ function secret_decrypt () {
 		esac
 		shift 2
 	done
-	
 	local file gpg_dir
 	gpg_dir="$(getent passwd "$key_owner" | cut -d: -f6)/.gnupg"
-
+	
+	# decrypt the files
 	for file in "$@"; do
 		local decrypted old_mode='' old_owner=''
 		if [[ ! -r "$file" ]]; then
@@ -384,7 +431,8 @@ function secret_decrypt () {
 }
 
 
-# parse arguments before the command
+
+# parse global options
 no_color='' verbose='' debug='' trace=''
 while [[ $# -ne 0 ]]; do
 	case "$1" in
@@ -398,6 +446,7 @@ while [[ $# -ne 0 ]]; do
 	shift
 done
 
+# no command
 if [[ $# -eq 0 ]]; then
 	usage
 fi
@@ -412,6 +461,7 @@ alias chown='debug chown'
 alias chgrp='debug chgrp'
 alias chattr='debug chattr'
 
+# verbose option for the used commands
 if [[ -n "$verbose" ]]; then
 	alias mkdir='mkdir -v'
 	alias chmod='chmod -v'
@@ -443,7 +493,7 @@ else
 fi
 
 
-# run the command (if it exist)
+# Run the command if it exist.
 case "$1" in
 	mk|rm|not|edit|encrypt|decrypt )
 	
@@ -465,6 +515,7 @@ execution of this program and nothing else, but it already exists."
 		touch "$log_file"
 		info "Created log file at '$log_file'"
 		
+		# run the command
 		main_cmd="$1"
 		shift
 		secret_"$main_cmd" "$@"

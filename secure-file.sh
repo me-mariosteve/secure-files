@@ -1,5 +1,5 @@
 #! /bin/bash
-# shellcheck disable=SC2312,SC2310,SC2250
+# shellcheck disable=SC2250
 
 
 # MIT License
@@ -25,7 +25,8 @@
 # SOFTWARE.
 
 
-set -ue
+set -o nounset -o errexit
+shopt -s inherit_errexit
 
 # Put nanoseconds in the date so the script can be run
 # multiple times a second, else the directory that

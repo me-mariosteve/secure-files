@@ -87,7 +87,7 @@ function success () {
 function error () {
 	display "$*"
 	log "$*"
-	exit 1
+	exit "${2:-1}"
 }
 function info () {
 	display "$*"
@@ -107,13 +107,16 @@ function debug () {
 		display "Running command: ${cmd[*]}"
 	fi
 	log "running command: ${cmd[*]}"
-	"${cmd[@]}" |& tee "$cmd_out"
+	# temporarely disable this option so when ${cmd[@]} fails the script won't stop
+	shopt -u inherit_errexit
+	"${cmd[@]}" |& tee "$cmd_out" || true
 	declare -i exit_status="${PIPESTATUS[0]}"
-	log "exit status: $exit_status"
-	log "command output:"
-	log "$(wc -l "$cmd_out") lines"
-	log "$(cat "$cmd_out")"
-	log "==============="
+	shopt -s inherit_errexit
+	log "exit status: $exit_status
+command output:
+$(wc -l "$cmd_out" || true) lines
+$(cat "$cmd_out" || true)
+==============="
 	return "$exit_status"
 }
 
@@ -140,7 +143,7 @@ function is_immutable () {
 	# is_immutable FILE
 	# Exit with code 0 if FILE is immutable,
 	# else 1.
-	[[ "$(lsattr "$1")" =~ ^....i ]]
+	[[ "$(lsattr "$1" || true)" =~ ^....i ]]
 }
 
 
@@ -269,8 +272,8 @@ function secret_mk () {
 		fi
 		if
 			[[ -e "$file" ]] || touch "$file"
-			set_file "$file" -m"$mode" -o"$owner" -g"$group" +
 		then
+			set_file "$file" -m"$mode" -o"$owner" -g"$group" +
 			success "Secured '$file'."
 		else
 			error "'$file' was not secured because an error occured."
@@ -297,14 +300,12 @@ function secret_not () {
 	done
 
 	for file in "$@"; do
-		{
-			if [[ -e "$file" ]]; then
-				[[ -f "$file" ]] || error "'$file' is not a regular file."
-			else
-				touch "$file"
-			fi
-			set_file "$file" -m"$mode" -o"$owner" -g"$group" -
-		} || error "an error occured while unsecuring '$file'."
+		if [[ -e "$file" ]]; then
+			[[ -f "$file" ]] || error "'$file' is not a regular file."
+		else
+			touch "$file"
+		fi
+		set_file "$file" -m"$mode" -o"$owner" -g"$group" - || error "An error occured while unsecuring '$file'."
 	done
 }
 
@@ -319,14 +320,11 @@ function secret_rm () {
 		read -r answer
 		if [[ "$answer" = 'I confirm.' ]]; then
 			info "'$file' will be deleted."
-			if
-				set_file "$file" -m -o -g - &&
+			{
+				set_file "$file" -m -o -g -
 				debug rm -vi "$file"
-			then
-				success "Deleted '$file'."
-			else
-				error "An error occured while trying to delete '$file'."
-			fi
+			} || error "An error occured while trying to delete '$file'."
+			success "Deleted '$file'."
 		else
 			info "'$file' won't be deleted."
 		fi
@@ -336,13 +334,17 @@ function secret_rm () {
 
 function secret_edit () {
 	[[ $# -ge 1 ]] || usage
-	local file="$1" editor="${EDITOR:-${VI:-vim}}" temp backup owner mode mutable=+
+	local file="$1" editor="${EDITOR:-${VI:-vim}}" temp backup owner mode mutable
 	[[ -e "$file" ]] || error "'$file' does not exist."
 	[[ -f "$file" ]] || error "'$file' is not a regular file."
 	# get informations about the file to edit
 	owner="$(stat -c %u "$file")"
 	mode="$(stat -c %a "$file")"
-	is_immutable "$file" || mutable=-
+	if is_immutable "$file"; then
+		mutable=+
+	else
+		mutable=-
+	fi
 	# create temporary file for editing
 	temp="$(mktemp)" || error "Failed to create temporary file for editing."
 	# backup the file
@@ -419,7 +421,7 @@ function secret_decrypt () {
 	for file in "$@"; do
 		local decrypted old_mode='' old_owner=''
 		if [[ ! -r "$file" ]]; then
-			read -r old_mode old_owner <<<"$(stat -c '%a %u' "$file")"
+			read -r old_mode old_owner <<<"$(stat -c '%a %u' "$file" || true)"
 			set_file "$file" -m400 -o"$USER" -g
 		fi
 		decrypted="$(ask_filename "${file%.asc}")"

@@ -19,6 +19,7 @@ Some basic features are available:
 
 | Dependency                                                              | Why?                                             |
 | ----------------------------------------------------------------------- | ------------------------------------------------ |
+| bash                                                                    | Run the script                                   |
 | e2fsprogs                                                               | For [un]setting the immutable attribute on files |
 | A text editor that can be run as root (e.g. [Vim](https://www.vim.org/) | To edit files                                    |
 | GnuPG                                                                   | To encrypt/decrypt files                         |

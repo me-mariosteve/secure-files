@@ -2,27 +2,26 @@
 
 ## Description
 
-I've started this Bash script some days ago, in the aims to keep a list of my accounts and passwords on my computer without others being able to read it.
-
-Actually, the script looks like an alias to various commands like `gpg`, `chattr`...
-It's still in development, so I don't recommend running it since it may produce data loss.
+Before I start writing this script, I wanted to store my passwords in a secure way on my computer.
+I learned about the immutable attribute and [GnuPG](https://gnupg.org) and it was great, but I was thinking I add to enter to much commands.
+So began this script, in the aim to automate this task.
 
 ## Features
 
-Some basic features are available:
-
-- Add/remove the 'immutable' attribute to a file (only on ext file systems)
-- Edit a file with this attribute (same)
+- Only on ext file systems and requires the script to be run as root:
+    add/remove the 'immutable' attribute to a file,
+    edit a file with this attribute
 - Encrypt/decrypt files via [GnuPG](https://gnupg.org/)
+- Set the owner, group and mode of a file
 
 ## Dependencies
 
-| Dependency                                                              | Why?                                             |
-| ----------------------------------------------------------------------- | ------------------------------------------------ |
-| bash                                                                    | Run the script                                   |
-| e2fsprogs                                                               | For [un]setting the immutable attribute on files |
-| A text editor that can be run as root (e.g. [Vim](https://www.vim.org/) | To edit files                                    |
-| GnuPG                                                                   | To encrypt/decrypt files                         |
+| Dependency                                                               | Why?                                        |
+| ------------------------------------------------------------------------ | ------------------------------------------- |
+| [bash](https://www.gnu.org/software/bash)                                | To run the script                           |
+| e2fsprogs                                                                | To [un]set the immutable attribute on files |
+| A text editor that can be run as root (e.g. [Vim](https://www.vim.org/)) | To edit files                               |
+| [GnuPG](https://gnupg.org/)                                              | To encrypt/decrypt files                    |
 
 ## Usage
 
@@ -34,14 +33,9 @@ For example, if it is in the current directory:
 ./secure-file.sh
 ```
 
-Note: this help message is a draft.
-
-You must be root to use this script.
-
 ## To do
 
 - [ ] Improve help messages
-- [ ] Optimize
 - [ ] Make it more secure (no data loss)
 - [ ] Something to unsecure a file, execute a command on it, then resecure the file
 - [ ] Improve code readability

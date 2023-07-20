@@ -1,5 +1,8 @@
 # Secure files
 
+**PLEASE _DO NOT_ USE THIS SCRIPT**
+**IT WAS WRITTEN A LONG TIME AGO AND IT IS _NOT_ SECURE AT ALL**
+
 ## Description
 
 Before I start writing this script, I wanted to store my passwords in a secure way on my computer.
